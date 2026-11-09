@@ -27,8 +27,8 @@ MakeColor(uint8 red, uint8 green, uint8 blue)
 
 IconCanvasView::IconCanvasView(EditorWindow* window)
 	:
-	BView("icon canvas", B_WILL_DRAW | B_FRAME_EVENTS | B_NAVIGABLE,
-		window),
+	BView(BRect(0, 0, 0, 0), "icon canvas", B_FOLLOW_NONE,
+		B_WILL_DRAW | B_FRAME_EVENTS | B_NAVIGABLE),
 	fWindow(window),
 	fVariant(kLargeVariant),
 	fCellSize(12),

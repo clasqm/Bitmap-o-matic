@@ -230,7 +230,7 @@ DrawToolIcon(BView* view, int32 tool, BRect r, rgb_color background)
 
 ToolBarView::ToolBarView(EditorWindow* window)
 	:
-	BView("tool bar", B_WILL_DRAW, window),
+	BView(BRect(0, 0, 0, 0), "tool bar", B_FOLLOW_NONE, B_WILL_DRAW),
 	fWindow(window)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -334,7 +334,7 @@ ToolBarView::ToolChanged()
 
 SwatchView::SwatchView(EditorWindow* window)
 	:
-	BView("swatches", B_WILL_DRAW, window),
+	BView(BRect(0, 0, 0, 0), "swatches", B_FOLLOW_NONE, B_WILL_DRAW),
 	fWindow(window)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -455,7 +455,7 @@ SwatchView::MouseDown(BPoint where)
 
 PaletteGridView::PaletteGridView(EditorWindow* window)
 	:
-	BView("palette", B_WILL_DRAW, window),
+	BView(BRect(0, 0, 0, 0), "palette", B_FOLLOW_NONE, B_WILL_DRAW),
 	fWindow(window),
 	fDragging(false),
 	fDraggingSecondary(false)
@@ -631,7 +631,7 @@ PaletteGridView::ColorsChanged()
 
 PreviewView::PreviewView(EditorWindow* window)
 	:
-	BView("preview", B_WILL_DRAW, window),
+	BView(BRect(0, 0, 0, 0), "preview", B_FOLLOW_NONE, B_WILL_DRAW),
 	fWindow(window)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));

@@ -25,6 +25,16 @@
 #include <string.h>
 
 
+// BView::SetFrame() belongs to the private part of the Haiku API; a child
+// view is positioned and sized with the public MoveTo() and ResizeTo().
+static void
+SetViewFrame(BView* view, BRect frame)
+{
+	view->MoveTo(frame.LeftTop());
+	view->ResizeTo(frame.Width(), frame.Height());
+}
+
+
 EditorWindow::EditorWindow()
 	:
 	BWindow(BRect(80, 60, 740, 760), "Bitmap-o-matic", B_TITLED_WINDOW, 0),
@@ -253,41 +263,42 @@ EditorWindow::_Layout()
 		fMenuBar->GetPreferredSize(&preferredWidth, &preferredHeight);
 		if (preferredHeight > 10.0f)
 			menuHeight = preferredHeight;
-		fMenuBar->SetFrame(BRect(0, 0, width, menuHeight - 1));
+		SetViewFrame(fMenuBar, BRect(0, 0, width, menuHeight - 1));
 	}
 
 	float statusTop = height - statusHeight;
 	if (fStatus != NULL)
-		fStatus->SetFrame(BRect(margin, statusTop + 2, width - margin,
+		SetViewFrame(fStatus, BRect(margin, statusTop + 2, width - margin,
 			height - 1));
 
 	float panelBottom = statusTop - margin;
 	float panelTop = panelBottom - panelHeight;
 
 	if (fSwatches != NULL)
-		fSwatches->SetFrame(BRect(margin, panelTop, margin + 68, panelBottom));
+		SetViewFrame(fSwatches, BRect(margin, panelTop, margin + 68,
+			panelBottom));
 
 	float rgbLeft = width - margin - rgbWidth;
 	if (fRed != NULL) {
-		fRed->SetFrame(BRect(rgbLeft, panelTop + 2, width - margin,
+		SetViewFrame(fRed, BRect(rgbLeft, panelTop + 2, width - margin,
 			panelTop + 26));
-		fGreen->SetFrame(BRect(rgbLeft, panelTop + 30, width - margin,
+		SetViewFrame(fGreen, BRect(rgbLeft, panelTop + 30, width - margin,
 			panelTop + 54));
-		fBlue->SetFrame(BRect(rgbLeft, panelTop + 58, width - margin,
+		SetViewFrame(fBlue, BRect(rgbLeft, panelTop + 58, width - margin,
 			panelTop + 82));
 	}
 	if (fIndexLabel != NULL)
-		fIndexLabel->SetFrame(BRect(rgbLeft, panelTop + 92, width - margin,
+		SetViewFrame(fIndexLabel, BRect(rgbLeft, panelTop + 92, width - margin,
 			panelBottom));
 
 	if (fPalette != NULL)
-		fPalette->SetFrame(BRect(margin + 76, panelTop, rgbLeft - 10,
+		SetViewFrame(fPalette, BRect(margin + 76, panelTop, rgbLeft - 10,
 			panelBottom));
 
 	float toolsBottom = panelTop - margin;
 	float toolsTop = toolsBottom - toolsHeight;
 	if (fToolBar != NULL)
-		fToolBar->SetFrame(BRect(margin, toolsTop, width - margin,
+		SetViewFrame(fToolBar, BRect(margin, toolsTop, width - margin,
 			toolsBottom));
 
 	float canvasTop = menuHeight + margin;
@@ -295,14 +306,14 @@ EditorWindow::_Layout()
 	float canvasRight = width - margin - rightWidth - margin;
 
 	if (fCanvas != NULL)
-		fCanvas->SetFrame(BRect(margin, canvasTop, canvasRight,
+		SetViewFrame(fCanvas, BRect(margin, canvasTop, canvasRight,
 			canvasBottom));
 
 	if (fPreview != NULL) {
 		float previewBottom = canvasTop + rightWidth;
 		if (previewBottom > canvasBottom)
 			previewBottom = canvasBottom;
-		fPreview->SetFrame(BRect(canvasRight + margin, canvasTop,
+		SetViewFrame(fPreview, BRect(canvasRight + margin, canvasTop,
 			width - margin, previewBottom));
 	}
 }
@@ -520,7 +531,7 @@ void
 EditorWindow::_ShowError(const char* text)
 {
 	BAlert* alert = new BAlert("Bitmap-o-matic", text, "OK", NULL, NULL,
-		B_WIDTH_AS_USUAL, B_STOP_ALERT, B_OFFSET_SPACING);
+		B_WIDTH_AS_USUAL, B_OFFSET_SPACING, B_STOP_ALERT);
 	alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 	alert->Go();
 }
@@ -551,7 +562,7 @@ EditorWindow::_MaybeSave(uint32 pendingAction)
 	BAlert* alert = new BAlert("Unsaved changes",
 		"This icon has been modified. Save the changes before continuing?",
 		"Save", "Cancel", "Don't Save", B_WIDTH_AS_USUAL,
-		B_WARNING_ALERT, B_OFFSET_SPACING);
+		B_OFFSET_SPACING, B_WARNING_ALERT);
 	int32 choice = alert->Go();
 
 	if (choice == 1) {
