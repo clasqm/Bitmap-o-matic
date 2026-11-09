@@ -16,4 +16,5 @@ add_executable(Bitmap-o-matic
 	src/Raster.cpp
 )
 
-target_link_libraries(Bitmap-o-matic be)
+# BFilePanel is implemented in libtracker, not in libbe.
+target_link_libraries(Bitmap-o-matic be tracker)
