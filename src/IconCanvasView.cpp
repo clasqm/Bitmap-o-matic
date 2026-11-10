@@ -44,6 +44,7 @@ IconCanvasView::IconCanvasView(EditorWindow* window)
 	fShapeEndX(-1),
 	fShapeEndY(-1),
 	fHasSelection(false),
+	fMaskActive(false),
 	fSelection(0, 0, -1, -1),
 	fSelecting(false),
 	fSelectAnchorX(0),
@@ -66,6 +67,7 @@ IconCanvasView::IconCanvasView(EditorWindow* window)
 	SetDrawingMode(B_OP_COPY);
 	memset(fPreviewPixels, IconPalette::kTransparentIndex, sizeof(fPreviewPixels));
 	memset(fMovePixels, IconPalette::kTransparentIndex, sizeof(fMovePixels));
+	memset(fMask, 0, sizeof(fMask));
 }
 
 
@@ -225,6 +227,25 @@ IconCanvasView::_DrawSelection()
 
 	BRect board = _PixelBoard();
 	float cell = fCellSize;
+
+	if (fMaskActive) {
+		// A transparency selection has no rectangular shape. Invert every
+		// selected pixel cell so the actual set of pixels is visible.
+		int32 width = PixelWidth();
+		SetDrawingMode(B_OP_INVERT);
+		SetHighColor(MakeColor(255, 255, 255));
+		for (int32 y = 0; y < width; y++) {
+			for (int32 x = 0; x < width; x++) {
+				if (fMask[y * width + x] == 0)
+					continue;
+				FillRect(BRect(board.left + x * cell,
+					board.top + y * cell,
+					board.left + (x + 1) * cell - 1,
+					board.top + (y + 1) * cell - 1));
+			}
+		}
+		SetDrawingMode(B_OP_COPY);
+	}
 	BRect rect(board.left + selection.left * cell,
 		board.top + selection.top * cell,
 		board.left + (selection.right + 1) * cell - 1,
@@ -316,6 +337,7 @@ IconCanvasView::SetVariant(int32 variant)
 	_CancelInteraction();
 	fVariant = variant;
 	fHasSelection = false;
+	fMaskActive = false;
 	fSelection.Set(0, 0, -1, -1);
 	fSelecting = false;
 	fMoveCandidate = false;
@@ -353,6 +375,7 @@ void
 IconCanvasView::Deselect()
 {
 	fHasSelection = false;
+	fMaskActive = false;
 	fSelection.Set(0, 0, -1, -1);
 	fSelecting = false;
 	Invalidate();
@@ -364,8 +387,63 @@ IconCanvasView::SelectAll()
 {
 	int32 width = PixelWidth();
 	fHasSelection = true;
+	fMaskActive = false;
 	fSelection.Set(0, 0, width - 1, width - 1);
 	fSelecting = false;
+	Invalidate();
+}
+
+
+void
+IconCanvasView::SelectPixels(bool transparent)
+{
+	int32 width = PixelWidth();
+	int32 height = PixelHeight();
+	const uint8* pixels = fWindow->Document()->Pixels(fVariant);
+
+	memset(fMask, 0, sizeof(fMask));
+
+	int32 count = 0;
+	int32 left = width;
+	int32 top = height;
+	int32 right = -1;
+	int32 bottom = -1;
+
+	for (int32 y = 0; y < height; y++) {
+		for (int32 x = 0; x < width; x++) {
+			bool isTransparent = IconPalette::IsTransparent(
+				pixels[y * width + x]);
+			if (isTransparent != transparent)
+				continue;
+
+			fMask[y * width + x] = 1;
+			count++;
+			if (x < left)
+				left = x;
+			if (x > right)
+				right = x;
+			if (y < top)
+				top = y;
+			if (y > bottom)
+				bottom = y;
+		}
+	}
+
+	_CancelInteraction();
+	fMoveCandidate = false;
+	fMoving = false;
+
+	if (count == 0) {
+		fMaskActive = false;
+		fHasSelection = false;
+		fSelection.Set(0, 0, -1, -1);
+		Invalidate();
+		return;
+	}
+
+	fMaskActive = true;
+	fHasSelection = true;
+	fSelection.Set(left, top, right, bottom);
 	Invalidate();
 }
 
@@ -406,9 +484,9 @@ IconCanvasView::_UpdateHover(int32 x, int32 y, bool valid)
 				(int)color.b);
 		}
 	} else {
-		status.SetToFormat("%s — %ld x %ld pixels",
-			IconDocument::VariantName(fVariant), (long)PixelWidth(),
-			(long)PixelHeight());
+		// The variant name already carries the icon's size; repeating it here
+		// only made the status line noisy.
+		status = IconDocument::VariantName(fVariant);
 	}
 	fWindow->UpdateStatus(status);
 }
@@ -446,7 +524,8 @@ IconCanvasView::MouseDown(BPoint where)
 		}
 
 		case kToolSelect:
-			if (fHasSelection && fSelection.Contains(BPoint(x, y)))
+			if (fHasSelection && !fMaskActive
+				&& fSelection.Contains(BPoint(x, y)))
 				_BeginMove(x, y);
 			else
 				_BeginSelection(x, y);
@@ -623,6 +702,7 @@ IconCanvasView::_BeginSelection(int32 x, int32 y)
 {
 	fSelecting = true;
 	fHasSelection = false;
+	fMaskActive = false;
 	fSelectAnchorX = x;
 	fSelectAnchorY = y;
 	fSelectCurrentX = x;
@@ -741,6 +821,7 @@ IconCanvasView::_CommitMove()
 
 	bool valid = fSelection.left <= fSelection.right
 		&& fSelection.top <= fSelection.bottom;
+	fMaskActive = false;
 	fHasSelection = valid;
 	if (!valid)
 		fSelection.Set(0, 0, -1, -1);
@@ -820,7 +901,12 @@ IconCanvasView::ClearSelection(uint8 color)
 	uint8* pixels = fWindow->Document()->Pixels(fVariant);
 
 	fWindow->PushUndo(fVariant);
-	if (fHasSelection) {
+	if (fMaskActive) {
+		for (int32 i = 0; i < width * width; i++) {
+			if (fMask[i] != 0)
+				pixels[i] = color;
+		}
+	} else if (fHasSelection) {
 		int32 left = (int32)fSelection.left;
 		int32 right = (int32)fSelection.right;
 		int32 top = (int32)fSelection.top;
@@ -867,6 +953,7 @@ IconCanvasView::PasteBlock(const uint8* pixels, int32 width, int32 height)
 			pixels + y * width, width);
 	}
 
+	fMaskActive = false;
 	fHasSelection = true;
 	fSelection.Set(destinationX, destinationY, destinationX + width - 1,
 		destinationY + height - 1);

@@ -228,6 +228,73 @@ DrawToolIcon(BView* view, int32 tool, BRect r, rgb_color background)
 //	#pragma mark - ToolBarView
 
 
+// Each tool is a view of its own, so that every button can carry its own
+// tool tip; a tool tip always belongs to a whole view.
+class ToolButton : public BView {
+public:
+	ToolButton(EditorWindow* window, int32 index)
+		:
+		BView(BRect(0, 0, 0, 0), "tool button", B_FOLLOW_NONE,
+			B_WILL_DRAW),
+		fWindow(window),
+		fIndex(index),
+		fActive(false)
+	{
+		SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		SetToolTip(ToolName(fIndex));
+	}
+
+	virtual void Draw(BRect updateRect)
+	{
+		BRect rect = Bounds();
+		rgb_color face = fActive ? MakeColor(196, 212, 238)
+			: MakeColor(246, 246, 246);
+
+		SetDrawingMode(B_OP_COPY);
+		SetHighColor(face);
+		FillRect(rect);
+
+		SetHighColor(fActive ? MakeColor(70, 90, 130)
+			: MakeColor(152, 152, 152));
+		FillRect(BRect(rect.left + 1, rect.bottom, rect.right, rect.bottom));
+		FillRect(BRect(rect.right, rect.top + 1, rect.right, rect.bottom));
+
+		SetHighColor(fActive ? MakeColor(120, 140, 180)
+			: MakeColor(255, 255, 255));
+		FillRect(BRect(rect.left, rect.top, rect.right - 1, rect.top));
+		FillRect(BRect(rect.left, rect.top, rect.left, rect.bottom - 1));
+
+		SetHighColor(fActive ? MakeColor(50, 65, 100)
+			: MakeColor(110, 110, 110));
+		StrokeRect(rect);
+
+		float inset = rect.Width() > 26.0f ? 8.0f : 4.0f;
+		DrawToolIcon(this, fIndex, BRect(rect.left + inset,
+			rect.top + inset, rect.right - inset, rect.bottom - inset), face);
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		(void)where;
+		fWindow->SetTool(fIndex);
+	}
+
+	void SetActive(bool active)
+	{
+		if (active == fActive)
+			return;
+		fActive = active;
+		Invalidate();
+	}
+
+private:
+	EditorWindow* fWindow;
+	int32 fIndex;
+	bool fActive;
+};
+
+
 ToolBarView::ToolBarView(EditorWindow* window)
 	:
 	BView(BRect(0, 0, 0, 0), "tool bar", B_FOLLOW_NONE, B_WILL_DRAW),
@@ -235,6 +302,13 @@ ToolBarView::ToolBarView(EditorWindow* window)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 	SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+	for (int32 i = 0; i < kToolCount; i++) {
+		fButtons[i] = new ToolButton(window, i);
+		AddChild(fButtons[i]);
+	}
+
+	_LayoutButtons();
 }
 
 
@@ -266,14 +340,16 @@ ToolBarView::_ButtonRect(int32 index) const
 }
 
 
-int32
-ToolBarView::_ButtonAt(BPoint where) const
+void
+ToolBarView::_LayoutButtons()
 {
 	for (int32 i = 0; i < kToolCount; i++) {
-		if (_ButtonRect(i).Contains(where))
-			return i;
+		if (fButtons[i] == NULL)
+			continue;
+		BRect rect = _ButtonRect(i);
+		fButtons[i]->MoveTo(rect.LeftTop());
+		fButtons[i]->ResizeTo(rect.Width(), rect.Height());
 	}
-	return -1;
 }
 
 
@@ -283,49 +359,35 @@ ToolBarView::Draw(BRect updateRect)
 	SetDrawingMode(B_OP_COPY);
 	SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 	FillRect(Bounds());
-
-	for (int32 i = 0; i < kToolCount; i++) {
-		BRect rect = _ButtonRect(i);
-		bool active = i == fWindow->Tool();
-		rgb_color face = active ? MakeColor(196, 212, 238)
-			: MakeColor(246, 246, 246);
-
-		SetHighColor(face);
-		FillRect(rect);
-
-		SetHighColor(active ? MakeColor(70, 90, 130)
-			: MakeColor(152, 152, 152));
-		FillRect(BRect(rect.left + 1, rect.bottom, rect.right, rect.bottom));
-		FillRect(BRect(rect.right, rect.top + 1, rect.right, rect.bottom));
-
-		SetHighColor(active ? MakeColor(120, 140, 180)
-			: MakeColor(255, 255, 255));
-		FillRect(BRect(rect.left, rect.top, rect.right - 1, rect.top));
-		FillRect(BRect(rect.left, rect.top, rect.left, rect.bottom - 1));
-
-		SetHighColor(active ? MakeColor(50, 65, 100)
-			: MakeColor(110, 110, 110));
-		StrokeRect(rect);
-
-		DrawToolIcon(this, i, BRect(rect.left + 8, rect.top + 8,
-			rect.right - 8, rect.bottom - 8), face);
-	}
 }
 
 
 void
-ToolBarView::MouseDown(BPoint where)
+ToolBarView::AttachedToWindow()
 {
-	int32 index = _ButtonAt(where);
-	if (index >= 0)
-		fWindow->SetTool(index);
+	BView::AttachedToWindow();
+	_LayoutButtons();
+	ToolChanged();
+}
+
+
+void
+ToolBarView::FrameResized(float width, float height)
+{
+	BView::FrameResized(width, height);
+	_LayoutButtons();
+	Invalidate();
 }
 
 
 void
 ToolBarView::ToolChanged()
 {
-	Invalidate();
+	int32 active = fWindow->Tool();
+	for (int32 i = 0; i < kToolCount; i++) {
+		if (fButtons[i] != NULL)
+			fButtons[i]->SetActive(i == active);
+	}
 }
 
 
@@ -643,22 +705,21 @@ BRect
 PreviewView::_CellRect(int32 variant) const
 {
 	const float gap = 6.0f;
-	float width = (Bounds().Width() - gap * 3) / 2.0f;
-	float height = (Bounds().Height() - gap * 3) / 2.0f;
-	int32 column = variant % 2;
-	int32 row = variant / 2;
+	float width = Bounds().Width() - gap * 2.0f;
+	float height = (Bounds().Height() - gap * 3.0f) / 2.0f;
 
-	float left = Bounds().left + gap + column * (width + gap);
-	float top = Bounds().top + gap + row * (height + gap);
-	return BRect(floorf(left), floorf(top),
-		floorf(left + width), floorf(top + height));
+	// The large thumbnail sits on top, the mini one below it.
+	float left = Bounds().left + gap;
+	float top = Bounds().top + gap + variant * (height + gap);
+	return BRect(floorf(left), floorf(top), floorf(left + width) - 1,
+		floorf(top + height) - 1);
 }
 
 
 int32
 PreviewView::_VariantAt(BPoint where) const
 {
-	for (int32 i = 0; i < kIconVariantCount; i++) {
+	for (int32 i = 0; i < kEditableVariantCount; i++) {
 		if (_CellRect(i).Contains(where))
 			return i;
 	}
@@ -676,7 +737,7 @@ PreviewView::Draw(BRect updateRect)
 	BFont font(*be_plain_font);
 	font.SetSize(9.0f);
 
-	for (int32 i = 0; i < kIconVariantCount; i++) {
+	for (int32 i = 0; i < kEditableVariantCount; i++) {
 		BRect cell = _CellRect(i);
 		bool active = i == fWindow->ActiveVariant();
 

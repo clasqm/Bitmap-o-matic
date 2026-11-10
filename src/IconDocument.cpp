@@ -538,6 +538,11 @@ IconDocument::SaveProject(const char* path, BString& error)
 {
 	error = "";
 
+	// Only the large and mini images are edited; the selected-state variants
+	// the file format carries are stored as copies of them.
+	memcpy(fPixels[kLargeSelectedVariant], fPixels[kLargeVariant], 1024);
+	memcpy(fPixels[kMiniSelectedVariant], fPixels[kMiniVariant], 256);
+
 	const size_t headerSize = 8 + 4 + 4;
 	size_t total = headerSize;
 	for (int32 i = 0; i < kIconVariantCount; i++)
@@ -565,6 +570,13 @@ IconDocument::SaveProject(const char* path, BString& error)
 		fPath = path;
 		fKind = kProjectDocument;
 		fDirty = false;
+
+		// A saved icon is also attached to the file it was saved into, so
+		// that Tracker shows it without a separate step.
+		BString attachError;
+		result = WriteIconAttributes(path, attachError, false);
+		if (result != B_OK)
+			error = attachError;
 	}
 	return result;
 }
@@ -583,7 +595,8 @@ IconDocument::SaveRaw(const char* path, int32 variant, BString& error)
 
 
 status_t
-IconDocument::WriteIconAttributes(const char* path, BString& error)
+IconDocument::WriteIconAttributes(const char* path, BString& error,
+	bool remember)
 {
 	error = "";
 
@@ -619,8 +632,10 @@ IconDocument::WriteIconAttributes(const char* path, BString& error)
 
 	node.Sync();
 
-	fPath = path;
-	fKind = kAttributeDocument;
+	if (remember) {
+		fPath = path;
+		fKind = kAttributeDocument;
+	}
 	fDirty = false;
 	return B_OK;
 }

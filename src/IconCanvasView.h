@@ -35,6 +35,10 @@ public:
 	void SelectAll();
 	void Deselect();
 
+	// Selects every pixel that is (or is not) transparent. Such a selection
+	// has no rectangle shape; its bounding box is reported by Selection().
+	void SelectPixels(bool transparent);
+
 	// Pastes an index buffer, either at the current selection or at the
 	// top left corner, and selects the result.
 	void PasteBlock(const uint8* pixels, int32 width, int32 height);
@@ -92,6 +96,8 @@ private:
 
 	// Selection
 	bool fHasSelection;
+	bool fMaskActive;
+	uint8 fMask[1024];
 	BRect fSelection;
 	bool fSelecting;
 	int32 fSelectAnchorX;

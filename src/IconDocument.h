@@ -7,13 +7,18 @@
 #include <vector>
 
 // A legacy BeOS icon set consists of a large (32x32) and a mini (16x16)
-// bitmap. Icon-O-Matic also edits the selected-state variants, so all four
-// images are kept in one document.
+// bitmap. The file format also carries the selected-state variants, but Haiku
+// ignores them, so they are kept only so that the four-icon layout survives:
+// they are written as copies of the large and mini images.
 enum IconVariant {
 	kLargeVariant = 0,
 	kMiniVariant = 1,
 	kLargeSelectedVariant = 2,
 	kMiniSelectedVariant = 3,
+
+	// The variants the interface lets the user edit.
+	kEditableVariantCount = 2,
+
 	kIconVariantCount = 4
 };
 
@@ -56,9 +61,15 @@ public:
 	// Saves in the format the document was opened with.
 	status_t Save(BString& error);
 
+	// Saving a project also attaches the bitmap icons to the written file.
 	status_t SaveProject(const char* path, BString& error);
 	status_t SaveRaw(const char* path, int32 variant, BString& error);
-	status_t WriteIconAttributes(const char* path, BString& error);
+
+	// Writes BEOS:L:ICON / BEOS:M:ICON (and the STD_ICON pair). With
+	// remember false the document keeps its current path and kind, which is
+	// what saving a project needs, since the file stays a project.
+	status_t WriteIconAttributes(const char* path, BString& error,
+		bool remember = true);
 
 	static bool HasIconAttributes(const char* path);
 

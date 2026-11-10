@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(Bitmap-o-matic
 	src/main.cpp
 	src/EditorWindow.cpp
+	src/HelpWindow.cpp
 	src/IconCanvasView.cpp
 	src/IconDocument.cpp
 	src/Palette.cpp

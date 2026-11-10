@@ -1,5 +1,6 @@
 #include "EditorWindow.h"
 
+#include "HelpWindow.h"
 #include "IconCanvasView.h"
 #include "Messages.h"
 #include "Palette.h"
@@ -37,13 +38,14 @@ SetViewFrame(BView* view, BRect frame)
 
 EditorWindow::EditorWindow()
 	:
-	BWindow(BRect(80, 60, 740, 760), "Bitmap-o-matic", B_TITLED_WINDOW, 0),
+	BWindow(BRect(90, 70, 570, 580), "Bitmap-o-matic", B_TITLED_WINDOW,
+		B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
 	fTool(kToolPencil),
 	fVariant(kLargeVariant),
 	fFrontColor(0),
 	fBackColor(IconPalette::kTransparentIndex),
 	fPendingAction(0),
-	fSaveAction(0),
+	fStatusText(),
 	fMenuBar(NULL),
 	fCanvas(NULL),
 	fPreview(NULL),
@@ -53,7 +55,6 @@ EditorWindow::EditorWindow()
 	fRed(NULL),
 	fGreen(NULL),
 	fBlue(NULL),
-	fIndexLabel(NULL),
 	fStatus(NULL),
 	fUndoItem(NULL),
 	fRedoItem(NULL),
@@ -63,7 +64,8 @@ EditorWindow::EditorWindow()
 	fClearItem(NULL),
 	fOpenPanel(NULL),
 	fSavePanel(NULL),
-	fAttachPanel(NULL)
+	fAttachPanel(NULL),
+	fHelpWindow(NULL)
 {
 	memset(&fClipboard, 0, sizeof(fClipboard));
 	fClipboard.width = 0;
@@ -102,10 +104,6 @@ EditorWindow::EditorWindow()
 	BFont smallFont(*be_plain_font);
 	smallFont.SetSize(10.0f);
 
-	fIndexLabel = new BStringView("index label", "");
-	fIndexLabel->SetFont(&smallFont);
-	fIndexLabel->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-
 	fStatus = new BStringView("status", "");
 	fStatus->SetFont(&smallFont);
 	fStatus->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -119,10 +117,7 @@ EditorWindow::EditorWindow()
 	AddChild(fRed);
 	AddChild(fGreen);
 	AddChild(fBlue);
-	AddChild(fIndexLabel);
 	AddChild(fStatus);
-
-	SetSizeLimits(560, 1600, 560, 1400);
 
 	_Layout();
 	fCanvas->MakeFocus(true);
@@ -142,9 +137,30 @@ EditorWindow::EditorWindow()
 
 EditorWindow::~EditorWindow()
 {
+	_DeleteFilePanels();
+}
+
+
+void
+EditorWindow::Quit()
+{
+	// The file panels are loopers of their own; they have to go before the
+	// window does, or the application never shuts down cleanly.
+	_DeleteFilePanels();
+	_CloseHelp();
+	BWindow::Quit();
+}
+
+
+void
+EditorWindow::_DeleteFilePanels()
+{
 	delete fOpenPanel;
+	fOpenPanel = NULL;
 	delete fSavePanel;
+	fSavePanel = NULL;
 	delete fAttachPanel;
+	fAttachPanel = NULL;
 }
 
 
@@ -163,11 +179,6 @@ EditorWindow::_BuildMenus()
 		B_COMMAND_KEY));
 	fileMenu->AddItem(new BMenuItem("Save As…", new BMessage(MSG_SAVE_AS),
 		'S', B_COMMAND_KEY | B_SHIFT_KEY));
-	fileMenu->AddSeparatorItem();
-	fileMenu->AddItem(new BMenuItem("Export Large Icon as Raw…",
-		new BMessage(MSG_EXPORT_LARGE)));
-	fileMenu->AddItem(new BMenuItem("Export Mini Icon as Raw…",
-		new BMessage(MSG_EXPORT_MINI)));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Attach Icons to File…",
 		new BMessage(MSG_ATTACH_ICONS)));
@@ -205,6 +216,11 @@ EditorWindow::_BuildMenus()
 	editMenu->AddItem(new BMenuItem("Deselect",
 		new BMessage(MSG_DESELECT), 'A', B_COMMAND_KEY | B_SHIFT_KEY));
 	editMenu->AddSeparatorItem();
+	editMenu->AddItem(new BMenuItem("Select All Transparent",
+		new BMessage(MSG_SELECT_TRANSPARENT)));
+	editMenu->AddItem(new BMenuItem("Select All Non-transparent",
+		new BMessage(MSG_SELECT_OPAQUE)));
+	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Swap Front and Back",
 		new BMessage(MSG_SWAP_COLORS), 'B', B_COMMAND_KEY));
 	editMenu->AddSeparatorItem();
@@ -229,7 +245,7 @@ EditorWindow::_BuildMenus()
 	editMenu->AddItem(toolsMenu);
 
 	BMenu* variantMenu = new BMenu("Icon");
-	for (int32 i = 0; i < kIconVariantCount; i++) {
+	for (int32 i = 0; i < kEditableVariantCount; i++) {
 		BMessage* message = new BMessage(MSG_SET_VARIANT);
 		message->AddInt32("variant", i);
 		fVariantItems[i] = new BMenuItem(IconDocument::VariantName(i),
@@ -239,6 +255,14 @@ EditorWindow::_BuildMenus()
 	editMenu->AddItem(variantMenu);
 
 	fMenuBar->AddItem(editMenu);
+
+	BMenu* helpMenu = new BMenu("Help");
+	helpMenu->AddItem(new BMenuItem("About Bitmap-o-matic",
+		new BMessage(MSG_ABOUT)));
+	helpMenu->AddSeparatorItem();
+	helpMenu->AddItem(new BMenuItem("Bitmap-o-matic Help",
+		new BMessage(MSG_HELP), '?', B_COMMAND_KEY));
+	fMenuBar->AddItem(helpMenu);
 }
 
 
@@ -251,10 +275,12 @@ EditorWindow::_Layout()
 
 	const float margin = 8.0f;
 	const float statusHeight = 18.0f;
-	const float panelHeight = 148.0f;
+	const float panelHeight = 104.0f;
 	const float toolsHeight = 52.0f;
-	const float rightWidth = 200.0f;
-	const float rgbWidth = 108.0f;
+	const float previewWidth = 140.0f;
+	const float rgbWidth = 116.0f;
+	const float swatchWidth = 74.0f;
+	const float swatchHeight = 76.0f;
 
 	float menuHeight = 22.0f;
 	if (fMenuBar != NULL) {
@@ -274,25 +300,29 @@ EditorWindow::_Layout()
 	float panelBottom = statusTop - margin;
 	float panelTop = panelBottom - panelHeight;
 
-	if (fSwatches != NULL)
-		SetViewFrame(fSwatches, BRect(margin, panelTop, margin + 68,
-			panelBottom));
-
-	float rgbLeft = width - margin - rgbWidth;
-	if (fRed != NULL) {
-		SetViewFrame(fRed, BRect(rgbLeft, panelTop + 2, width - margin,
-			panelTop + 26));
-		SetViewFrame(fGreen, BRect(rgbLeft, panelTop + 30, width - margin,
-			panelTop + 54));
-		SetViewFrame(fBlue, BRect(rgbLeft, panelTop + 58, width - margin,
-			panelTop + 82));
+	// The colour chips sit in the bottom right corner; the palette and the
+	// RGB fields share the rest of this row, so the window stays narrow.
+	float swatchesLeft = width - margin - swatchWidth;
+	if (fSwatches != NULL) {
+		float swatchesTop = panelBottom - swatchHeight;
+		if (swatchesTop < panelTop)
+			swatchesTop = panelTop;
+		SetViewFrame(fSwatches, BRect(swatchesLeft, swatchesTop,
+			width - margin, panelBottom));
 	}
-	if (fIndexLabel != NULL)
-		SetViewFrame(fIndexLabel, BRect(rgbLeft, panelTop + 92, width - margin,
-			panelBottom));
+
+	float rgbLeft = swatchesLeft - margin - rgbWidth;
+	if (fRed != NULL) {
+		SetViewFrame(fRed, BRect(rgbLeft, panelTop + 2, swatchesLeft - margin,
+			panelTop + 26));
+		SetViewFrame(fGreen, BRect(rgbLeft, panelTop + 34,
+			swatchesLeft - margin, panelTop + 58));
+		SetViewFrame(fBlue, BRect(rgbLeft, panelTop + 66,
+			swatchesLeft - margin, panelTop + 90));
+	}
 
 	if (fPalette != NULL)
-		SetViewFrame(fPalette, BRect(margin + 76, panelTop, rgbLeft - 10,
+		SetViewFrame(fPalette, BRect(margin, panelTop, rgbLeft - margin,
 			panelBottom));
 
 	float toolsBottom = panelTop - margin;
@@ -303,19 +333,15 @@ EditorWindow::_Layout()
 
 	float canvasTop = menuHeight + margin;
 	float canvasBottom = toolsTop - margin;
-	float canvasRight = width - margin - rightWidth - margin;
+	float canvasRight = width - margin - previewWidth - margin;
 
 	if (fCanvas != NULL)
 		SetViewFrame(fCanvas, BRect(margin, canvasTop, canvasRight,
 			canvasBottom));
 
-	if (fPreview != NULL) {
-		float previewBottom = canvasTop + rightWidth;
-		if (previewBottom > canvasBottom)
-			previewBottom = canvasBottom;
+	if (fPreview != NULL)
 		SetViewFrame(fPreview, BRect(canvasRight + margin, canvasTop,
-			width - margin, previewBottom));
-	}
+			width - margin, canvasBottom));
 }
 
 
@@ -350,13 +376,6 @@ EditorWindow::_UpdateColorControls()
 	fGreen->SetText(value.String());
 	value.SetToFormat("%d", (int)color.b);
 	fBlue->SetText(value.String());
-
-	BString label;
-	if (IconPalette::IsTransparent(fFrontColor))
-		label.SetToFormat("Index %d (transparent)", (int)fFrontColor);
-	else
-		label.SetToFormat("Index %d", (int)fFrontColor);
-	fIndexLabel->SetText(label.String());
 }
 
 
@@ -509,8 +528,27 @@ EditorWindow::DocumentEdited()
 void
 EditorWindow::UpdateStatus(const BString& text)
 {
-	if (fStatus != NULL)
-		fStatus->SetText(text.String());
+	fStatusText = text;
+	_RefreshStatus();
+}
+
+
+void
+EditorWindow::_RefreshStatus()
+{
+	if (fStatus == NULL)
+		return;
+
+	// The status line carries the last message and, once the icon has a file,
+	// the full path of that file.
+	BString line = fStatusText;
+	const char* path = fDocument.Path();
+	if (path != NULL && *path != '\0') {
+		if (line.Length() > 0)
+			line << "  —  ";
+		line << path;
+	}
+	fStatus->SetText(line.String());
 }
 
 
@@ -524,6 +562,7 @@ EditorWindow::RefreshInterface()
 	_UpdateTitle();
 	_UpdateColorControls();
 	_UpdateMenuStates();
+	_RefreshStatus();
 }
 
 
@@ -576,18 +615,20 @@ EditorWindow::_MaybeSave(uint32 pendingAction)
 
 	if (fDocument.Path()[0] == '\0') {
 		fPendingAction = pendingAction;
-		_ShowSavePanel(MSG_SAVE_AS, "Untitled.beicon");
+		_ShowSavePanel("Untitled.beicon");
 		return false;
 	}
 
 	BString error;
 	if (fDocument.Save(error) != B_OK) {
 		_ShowError(error.String());
-		return false;
+		if (fDocument.IsDirty())
+			return false;
 	}
 
 	fPendingAction = 0;
 	_UpdateTitle();
+	_RefreshStatus();
 	return true;
 }
 
@@ -611,9 +652,8 @@ EditorWindow::_OpenPath(const char* path)
 	RefreshInterface();
 	fPreview->VariantChanged();
 
-	BString status;
-	status.SetToFormat("Opened %s", fDocument.FileName().String());
-	UpdateStatus(status);
+	// The full path is appended to the status line by _RefreshStatus().
+	UpdateStatus("Opened");
 }
 
 
@@ -621,22 +661,21 @@ void
 EditorWindow::_SaveDocument()
 {
 	if (fDocument.Path()[0] == '\0') {
-		_ShowSavePanel(MSG_SAVE_AS, "Untitled.beicon");
+		_ShowSavePanel("Untitled.beicon");
 		return;
 	}
 
 	BString error;
 	if (fDocument.Save(error) != B_OK) {
 		_ShowError(error.String());
-		return;
+		if (fDocument.IsDirty())
+			return;
 	}
 
 	fDocument.SetDirty(false);
 	RefreshInterface();
 
-	BString status;
-	status.SetToFormat("Saved %s", fDocument.FileName().String());
-	UpdateStatus(status);
+	UpdateStatus("Saved");
 }
 
 
@@ -677,10 +716,8 @@ EditorWindow::_ShowOpenPanel()
 
 
 void
-EditorWindow::_ShowSavePanel(uint32 action, const char* suggestedName)
+EditorWindow::_ShowSavePanel(const char* suggestedName)
 {
-	fSaveAction = action;
-
 	if (fSavePanel == NULL) {
 		fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this), NULL,
 			B_FILE_NODE, false, new BMessage(MSG_SAVE_PANEL_DONE));
@@ -735,32 +772,17 @@ EditorWindow::_PathFromSaveMessage(BMessage* message, BPath& path)
 void
 EditorWindow::_HandleSavePanel(BMessage* message)
 {
-	int32 action = (int32)fSaveAction;
-
 	BPath path;
 	if (!_PathFromSaveMessage(message, path))
 		return;
 
 	BString error;
-	status_t result = B_OK;
-
-	switch (action) {
-		case MSG_SAVE_AS:
-			result = fDocument.SaveProject(path.Path(), error);
-			break;
-		case MSG_EXPORT_LARGE:
-			result = fDocument.SaveRaw(path.Path(), kLargeVariant, error);
-			break;
-		case MSG_EXPORT_MINI:
-			result = fDocument.SaveRaw(path.Path(), kMiniVariant, error);
-			break;
-		default:
-			return;
-	}
-
-	if (result != B_OK) {
+	if (fDocument.SaveProject(path.Path(), error) != B_OK) {
 		_ShowError(error.String());
-		return;
+		// The project itself may have been written even when attaching the
+		// icons to it failed; in that case the document is already clean.
+		if (fDocument.IsDirty())
+			return;
 	}
 
 	uint32 pending = fPendingAction;
@@ -777,13 +799,7 @@ EditorWindow::_HandleSavePanel(BMessage* message)
 		return;
 	}
 
-	BString status;
-	if (action == MSG_SAVE_AS) {
-		status.SetToFormat("Saved %s", fDocument.FileName().String());
-	} else {
-		status.SetToFormat("Exported %s", path.Leaf());
-	}
-	UpdateStatus(status);
+	UpdateStatus("Saved");
 }
 
 
@@ -939,17 +955,9 @@ EditorWindow::MessageReceived(BMessage* message)
 		{
 			BString name = fDocument.Path()[0] == '\0'
 				? BString("Untitled.beicon") : fDocument.FileName();
-			_ShowSavePanel(MSG_SAVE_AS, name.String());
+			_ShowSavePanel(name.String());
 			break;
 		}
-
-		case MSG_EXPORT_LARGE:
-			_ShowSavePanel(MSG_EXPORT_LARGE, "large-icon.raw");
-			break;
-
-		case MSG_EXPORT_MINI:
-			_ShowSavePanel(MSG_EXPORT_MINI, "mini-icon.raw");
-			break;
 
 		case MSG_ATTACH_ICONS:
 			_ShowAttachPanel();
@@ -995,6 +1003,26 @@ EditorWindow::MessageReceived(BMessage* message)
 
 		case MSG_SELECT_ALL:
 			_SelectAll();
+			break;
+
+		case MSG_SELECT_TRANSPARENT:
+			_SelectTransparent(true);
+			break;
+
+		case MSG_SELECT_OPAQUE:
+			_SelectTransparent(false);
+			break;
+
+		case MSG_ABOUT:
+			_ShowAbout();
+			break;
+
+		case MSG_HELP:
+			_ShowHelp();
+			break;
+
+		case MSG_HELP_CLOSED:
+			fHelpWindow = NULL;
 			break;
 
 		case MSG_DESELECT:
@@ -1072,4 +1100,60 @@ bool
 EditorWindow::QuitRequested()
 {
 	return _MaybeSave(MSG_QUIT);
+}
+
+
+void
+EditorWindow::_SelectTransparent(bool transparent)
+{
+	fCanvas->SelectPixels(transparent);
+	UpdateStatus(transparent ? "Selected all transparent pixels"
+		: "Selected all non-transparent pixels");
+}
+
+
+void
+EditorWindow::_ShowAbout()
+{
+	BString text(
+		"Bitmap-o-matic\n"
+		"An editor for the 32 x 32 and 16 x 16 bitmap icons that BeOS kept "
+		"in the attributes of a file.\n\n"
+		"Copyright 2026 Michel Clasquin-Johnson\n\n"
+		"Built with the assistance of Gemini and Freebuff.\n\n"
+		"Licensing: this program is released into the public domain under "
+		"the Unlicense. See the LICENSE file for the full text. It comes "
+		"with no warranty of any kind.");
+
+	BAlert* alert = new BAlert("About Bitmap-o-matic", text.String(), "OK",
+		NULL, NULL, B_WIDTH_AS_USUAL, B_INFO_ALERT);
+	alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
+	alert->Go();
+}
+
+
+void
+EditorWindow::_ShowHelp()
+{
+	if (fHelpWindow != NULL && fHelpWindow->Lock()) {
+		fHelpWindow->Activate();
+		fHelpWindow->Unlock();
+		return;
+	}
+
+	fHelpWindow = new HelpWindow(this);
+	fHelpWindow->Show();
+}
+
+
+void
+EditorWindow::_CloseHelp()
+{
+	if (fHelpWindow == NULL)
+		return;
+
+	HelpWindow* help = fHelpWindow;
+	fHelpWindow = NULL;
+	if (help->Lock())
+		help->Quit();
 }

@@ -10,6 +10,7 @@
 
 class BFilePanel;
 class BMenuBar;
+class HelpWindow;
 class BPath;
 class BMenuItem;
 class BStringView;
@@ -28,6 +29,7 @@ public:
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
+	virtual void Quit();
 	virtual void MenusBeginning();
 	virtual void FrameResized(float width, float height);
 
@@ -58,6 +60,11 @@ private:
 	void _Layout();
 	void _UpdateTitle();
 	void _UpdateColorControls();
+	void _RefreshStatus();
+	void _DeleteFilePanels();
+	void _CloseHelp();
+	void _ShowAbout();
+	void _ShowHelp();
 	void _UpdateToolMark();
 	void _UpdateVariantMark();
 	void _UpdateMenuStates();
@@ -69,7 +76,7 @@ private:
 	void _Revert();
 	void _ApplyRGB();
 	void _ShowOpenPanel();
-	void _ShowSavePanel(uint32 action, const char* suggestedName);
+	void _ShowSavePanel(const char* suggestedName);
 	void _ShowAttachPanel();
 	void _HandleOpenPanel(BMessage* message);
 	void _HandleSavePanel(BMessage* message);
@@ -80,6 +87,7 @@ private:
 	void _PasteFromClipboard();
 	void _ClearSelection();
 	void _SelectAll();
+	void _SelectTransparent(bool transparent);
 	void _Deselect();
 
 	void _ShowError(const char* text);
@@ -98,7 +106,7 @@ private:
 	uint8 fBackColor;
 	Clipboard fClipboard;
 	uint32 fPendingAction;
-	uint32 fSaveAction;
+	BString fStatusText;
 
 	BMenuBar* fMenuBar;
 	IconCanvasView* fCanvas;
@@ -109,7 +117,6 @@ private:
 	BTextControl* fRed;
 	BTextControl* fGreen;
 	BTextControl* fBlue;
-	BStringView* fIndexLabel;
 	BStringView* fStatus;
 
 	BMenuItem* fToolItems[kToolCount];
@@ -124,6 +131,7 @@ private:
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;
 	BFilePanel* fAttachPanel;
+	HelpWindow* fHelpWindow;
 };
 
 #endif // EDITOR_WINDOW_H

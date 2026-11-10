@@ -4,26 +4,32 @@
 #include <View.h>
 
 #include "IconDocument.h"
+#include "Tools.h"
 
 
 class EditorWindow;
+class ToolButton;
 
 
+// The tool bar draws nothing itself: it lays out one child view per tool, and
+// each of those views carries the tool's tool tip.
 class ToolBarView : public BView {
 public:
 	ToolBarView(EditorWindow* window);
 
 	virtual void Draw(BRect updateRect);
-	virtual void MouseDown(BPoint where);
+	virtual void AttachedToWindow();
+	virtual void FrameResized(float width, float height);
 
 	void ToolChanged();
 
 private:
+	void _LayoutButtons();
 	BRect _ButtonRect(int32 index) const;
-	int32 _ButtonAt(BPoint where) const;
 	float _ButtonSize() const;
 
 	EditorWindow* fWindow;
+	ToolButton* fButtons[kToolCount];
 };
 
 

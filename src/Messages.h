@@ -9,8 +9,6 @@ enum {
 	MSG_OPEN = 'open',
 	MSG_SAVE = 'save',
 	MSG_SAVE_AS = 'svas',
-	MSG_EXPORT_LARGE = 'exlg',
-	MSG_EXPORT_MINI = 'exmn',
 	MSG_ATTACH_ICONS = 'attc',
 	MSG_REVERT = 'rvrt',
 	MSG_QUIT = 'quit',
@@ -22,6 +20,8 @@ enum {
 	MSG_PASTE = 'pste',
 	MSG_CLEAR = 'clr ',
 	MSG_SELECT_ALL = 'slct',
+	MSG_SELECT_TRANSPARENT = 'sltr',
+	MSG_SELECT_OPAQUE = 'slop',
 	MSG_DESELECT = 'dslc',
 	MSG_SWAP_COLORS = 'swap',
 
@@ -37,6 +37,8 @@ enum {
 	MSG_ATTACH_PANEL_DONE = 'apdn',
 
 	MSG_ABOUT = 'abou',
+	MSG_HELP = 'help',
+	MSG_HELP_CLOSED = 'hlpc',
 	MSG_DOCUMENT_CHANGED = 'docd'
 };
 
