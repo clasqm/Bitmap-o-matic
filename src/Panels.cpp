@@ -297,7 +297,11 @@ private:
 
 ToolBarView::ToolBarView(EditorWindow* window)
 	:
-	BView(BRect(0, 0, 0, 0), "tool bar", B_FOLLOW_NONE, B_WILL_DRAW),
+	// B_FRAME_EVENTS is not a default: without it Haiku never calls
+	// FrameResized(), and the buttons would keep the layout they were given
+	// while the bar still had no width.
+	BView(BRect(0, 0, 0, 0), "tool bar", B_FOLLOW_NONE,
+		B_WILL_DRAW | B_FRAME_EVENTS),
 	fWindow(window)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -316,8 +320,11 @@ float
 ToolBarView::_ButtonSize() const
 {
 	const float gap = 4.0f;
-	float size = (Bounds().Width() - 8.0f - (kToolCount - 1) * gap)
-		/ kToolCount;
+	float width = Bounds().Width();
+	if (width < 1.0f)
+		return 18.0f;
+
+	float size = (width - 8.0f - (kToolCount - 1) * gap) / kToolCount;
 	if (size > 38.0f)
 		size = 38.0f;
 	if (size < 18.0f)
@@ -333,7 +340,11 @@ ToolBarView::_ButtonRect(int32 index) const
 	float size = _ButtonSize();
 	float total = kToolCount * size + (kToolCount - 1) * gap;
 	float left = floorf((Bounds().Width() - total) / 2.0f);
+	if (left < 0.0f)
+		left = 0.0f;
 	float top = floorf((Bounds().Height() - size) / 2.0f);
+	if (top < 0.0f)
+		top = 0.0f;
 
 	return BRect(left + index * (size + gap), top,
 		left + index * (size + gap) + size - 1, top + size - 1);
@@ -347,6 +358,8 @@ ToolBarView::_LayoutButtons()
 		if (fButtons[i] == NULL)
 			continue;
 		BRect rect = _ButtonRect(i);
+		if (fButtons[i]->Frame() == rect)
+			continue;
 		fButtons[i]->MoveTo(rect.LeftTop());
 		fButtons[i]->ResizeTo(rect.Width(), rect.Height());
 	}
@@ -408,15 +421,15 @@ BRect
 SwatchView::_FrontRect() const
 {
 	return BRect(Bounds().left + 2, Bounds().top + 14,
-		Bounds().right - 22, Bounds().top + 34);
+		Bounds().right - 22, Bounds().top + 38);
 }
 
 
 BRect
 SwatchView::_BackRect() const
 {
-	return BRect(Bounds().left + 2, Bounds().top + 48,
-		Bounds().right - 22, Bounds().top + 68);
+	return BRect(Bounds().left + 2, Bounds().top + 52,
+		Bounds().right - 22, Bounds().top + 76);
 }
 
 
@@ -475,7 +488,7 @@ SwatchView::Draw(BRect updateRect)
 	SetFont(&font);
 	SetHighColor(MakeColor(40, 40, 40));
 	DrawString("Front", BPoint(Bounds().left + 3, Bounds().top + 11));
-	DrawString("Back", BPoint(Bounds().left + 3, Bounds().top + 45));
+	DrawString("Back", BPoint(Bounds().left + 3, Bounds().top + 49));
 
 	_DrawChip(_FrontRect(), fWindow->FrontColor());
 	_DrawChip(_BackRect(), fWindow->BackColor());

@@ -280,7 +280,6 @@ EditorWindow::_Layout()
 	const float previewWidth = 140.0f;
 	const float rgbWidth = 116.0f;
 	const float swatchWidth = 74.0f;
-	const float swatchHeight = 76.0f;
 
 	float menuHeight = 22.0f;
 	if (fMenuBar != NULL) {
@@ -304,10 +303,8 @@ EditorWindow::_Layout()
 	// RGB fields share the rest of this row, so the window stays narrow.
 	float swatchesLeft = width - margin - swatchWidth;
 	if (fSwatches != NULL) {
-		float swatchesTop = panelBottom - swatchHeight;
-		if (swatchesTop < panelTop)
-			swatchesTop = panelTop;
-		SetViewFrame(fSwatches, BRect(swatchesLeft, swatchesTop,
+		// Top align with the RGB fields, which start two pixels into the row.
+		SetViewFrame(fSwatches, BRect(swatchesLeft, panelTop + 2,
 			width - margin, panelBottom));
 	}
 
